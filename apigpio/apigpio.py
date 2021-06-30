@@ -397,25 +397,19 @@ class _callback_handler(object):
             self.f_stop.set_result(True)
             yield from self.f_stopped
 
-    @asyncio.coroutine
-    def _wait_for_notif(self):
-
+    async def _wait_for_notif(self):
         last_level = 0
-
         while True:
             MSG_SIZ = 12
-            f_recv = self._loop.sock_recv(self.s, MSG_SIZ)
-            done, pending = yield from asyncio.\
-                wait([f_recv, self.f_stop],
-                     return_when=asyncio.FIRST_COMPLETED)
-            if self.f_stop in done:
-                break
-            else:
-                buf = f_recv.result()
-            # buf = yield from self._loop.sock_recv(self.s, MSG_SIZ)
-
+            buf = b''
             while len(buf) < MSG_SIZ:
-                yield from self._loop.sock_recv(self.s, MSG_SIZ-len(buf))
+                try:
+                    buf += await asyncio.wait_for(self._loop.sock_recv(self.s, MSG_SIZ-len(buf)), timeout=.1)
+                except asyncio.TimeoutError:
+                    if self.f_stop.done():
+                        break
+            if self.f_stop.done():
+                break
 
             seq, flags, tick, level = (struct.unpack('HHII', buf))
             if flags == 0:
